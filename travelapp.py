@@ -4,73 +4,103 @@ import folium
 from streamlit_folium import st_folium
 from geopy.geocoders import Nominatim
 
-# --- 1. APPLE NOTES / COMPACT UI ---
-st.set_page_config(page_title="Vibe Travel", layout="wide", page_icon="📍")
+# --- 1. THE "NOTEPAD" ENGINE (CSS) ---
+st.set_page_config(page_title="Travel Planner", layout="wide")
 
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
     
     html, body, [class*="css"] {
         font-family: 'Inter', -apple-system, sans-serif !important;
-        background-color: #FFFFFF;
     }
 
-    /* Tabell-design för att tvinga horisontell layout på mobil */
-    .food-table {
+    /* MATLISTAN - NOTEPAD STYLE */
+    .notepad-container {
         width: 100%;
-        border-collapse: collapse;
-    }
-    .food-table td {
-        padding: 4px 0;
-        border-bottom: 1px solid #f2f2f7;
-        vertical-align: middle;
-    }
-    .food-name-cell { width: 50%; }
-    .food-check-cell { width: 15%; text-align: center; }
-    .food-del-cell { width: 10%; text-align: right; }
-
-    /* Fixa radavståndet i Streamlit */
-    [data-testid="stVerticalBlock"] > div {
-        gap: 0.2rem !important;
-        margin-bottom: 0px !important;
+        margin-top: 10px;
     }
     
-    /* Göm labels på checkboxar i matlistan för att de ska sitta tajt */
-    .compact-check label {
+    .notepad-row {
         display: flex;
-        flex-direction: column;
-        align-items: center;
-        font-size: 0.7rem !important;
-        margin: 0 !important;
-        padding: 0 !important;
+        align-items: flex-start;
+        justify-content: space-between;
+        padding: 8px 0;
+        border-bottom: 0.5px solid #e5e5e5;
     }
 
-    .stTabs [data-baseweb="tab-list"] { background-color: #f5f5f7; border-radius: 12px; }
+    .notepad-text {
+        flex: 1;
+        padding-right: 10px;
+    }
+
+    .notepad-title {
+        font-weight: 600;
+        font-size: 1.05rem;
+        color: #1d1d1f;
+        margin-bottom: 2px;
+    }
+
+    .notepad-desc {
+        font-size: 0.85rem;
+        color: #86868b;
+        font-style: italic;
+        line-height: 1.2;
+    }
+
+    .notepad-checks {
+        display: flex;
+        gap: 20px; /* Mellanrum mellan M och T */
+        align-items: center;
+        padding-top: 2px;
+    }
+
+    /* Tvingar Streamlits checkboxar att bli små och ligga horisontellt */
+    [data-testid="column"] {
+        min-width: 0px !important;
+        flex-direction: row !important;
+        display: flex !important;
+    }
+    
+    div[data-testid="stHorizontalBlock"] {
+        flex-wrap: nowrap !important; /* Förhindrar radbrytning på mobil! */
+    }
+
+    .stCheckbox {
+        margin-bottom: -15px !important;
+    }
+
+    /* Snyggare header för tabs */
+    .stTabs [data-baseweb="tab-list"] {
+        background-color: #f5f5f7;
+        border-radius: 10px;
+        padding: 4px;
+    }
+    
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. LOGIC ---
+# --- 2. DATA ---
 if 'trips' not in st.session_state:
     st.session_state.trips = {}
-geolocator = Nominatim(user_agent="vibe_travel_v17")
+geolocator = Nominatim(user_agent="travel_app_v18")
 MAPBOX_TOKEN = st.secrets.get("MAPBOX_TOKEN", None)
 
 # --- SIDEBAR ---
 with st.sidebar:
-    st.markdown("### 🗺️ Resor")
+    st.header("Mina Resor")
     trip_names = list(st.session_state.trips.keys())
-    sel_trip = st.selectbox("Välj", options=trip_names, label_visibility="collapsed") if trip_names else None
+    sel_trip = st.selectbox("Välj resa", options=trip_names, label_visibility="collapsed") if trip_names else None
     if st.button("+ Ny resa", use_container_width=True):
         st.session_state.add_mode = True
     if st.session_state.get('add_mode'):
         with st.form("new"):
-            n = st.text_input("Vart?")
-            t = st.text_input("Vem? (komma-separerat)")
-            if st.form_submit_button("Spara"):
-                st.session_state.trips[n] = {"places":[], "schedule":[], "food":[], "photos":[], "travelers":[x.strip() for x in t.split(",")] if t else ["Micke", "Tessan"]}
+            n = st.text_input("Destination")
+            t = st.text_input("Resenärer (t.ex. Micke, Tessan)")
+            if st.form_submit_button("Skapa"):
+                st.session_state.trips[n] = {"places":[], "schedule":[], "food":[], "travelers":[x.strip() for x in t.split(",")] if t else ["M", "T"]}
                 st.session_state.add_mode = False
                 st.rerun()
 
@@ -78,68 +108,66 @@ with st.sidebar:
 if sel_trip:
     trip = st.session_state.trips[sel_trip]
     st.title(sel_trip)
-    tabs = st.tabs(["📍 Platser", "📅 Schema", "🍝 Mat", "📸 Bilder"])
+    tabs = st.tabs(["📍 Platser", "📅 Schema", "🍝 Bucket List"])
 
-    # --- TAB 3: MAT (DEN VI FIXAR NU) ---
+    # --- TAB 3: MATEN (DEN KRITISKA DELEN) ---
     with tabs[2]:
-        with st.expander("➕ Lägg till ny rätt"):
-            f_n = st.text_input("Rätt")
+        with st.expander("➕ Lägg till i listan"):
+            f_n = st.text_input("Vad?")
             f_d = st.text_input("Beskrivning")
-            if st.button("Spara mat"):
+            if st.button("Spara"):
                 trip['food'].append({"item": f_n, "desc": f_d, "checks": {name: False for name in trip['travelers']}})
                 st.rerun()
 
-        st.write("")
-        
-        # Nu skapar vi rader manuellt men med Streamlit-objekt inuti 
-        # för att garantera att de hamnar på samma horisontella rad.
+        st.write("") 
+
         for i, f in enumerate(trip['food']):
-            # Vi använder en container med fasta kolumner och stänger av responsivitet 
-            # genom att hålla dem extremt enkla.
-            c1, c2, c3, c4 = st.columns([0.4, 0.2, 0.2, 0.1])
+            # Här skapar vi en container som tvingar innehållet att vara horisontellt
+            # Vi använder 3 kolumner: Info (70%), Checkboxar (25%), Radera (5%)
+            row_cols = st.columns([0.65, 0.25, 0.1])
             
-            with c1:
-                st.markdown(f"**{f['item']}**<br><small style='color:gray; font-style:italic;'>{f['desc']}</small>", unsafe_allow_html=True)
+            with row_cols[0]:
+                # Vi bygger texten med HTML för att få Notepad-looken
+                st.markdown(f"""
+                    <div style="line-height:1.2;">
+                        <div style="font-weight:600; font-size:1rem;">{f['item']}</div>
+                        <div style="color:gray; font-size:0.8rem; font-style:italic;">{f['desc']}</div>
+                    </div>
+                """, unsafe_allow_html=True)
             
-            # Här tvingar vi in personernas checkboxar
-            for idx, name in enumerate(trip['travelers']):
-                target_col = c2 if idx == 0 else c3
-                with target_col:
-                    initial = name[0].upper()
-                    trip['food'][i]['checks'][name] = st.checkbox(initial, value=f['checks'][name], key=f"chk_{sel_trip}_{i}_{name}")
+            with row_cols[1]:
+                # Här lägger vi person-checkboxar på RAD
+                n_travelers = len(trip['travelers'])
+                chk_cols = st.columns(n_travelers)
+                for idx, name in enumerate(trip['travelers']):
+                    label = name[0].upper() # Bara första bokstaven
+                    trip['food'][i]['checks'][name] = chk_cols[idx].checkbox(label, value=f['checks'][name], key=f"c{i}{idx}")
             
-            with c4:
-                if st.button("🗑", key=f"del_{i}"):
+            with row_cols[2]:
+                if st.button("🗑", key=f"del{i}"):
                     trip['food'].pop(i)
                     st.rerun()
             
-            st.markdown("---")
+            st.markdown("<hr style='margin:2px 0; opacity:0.1'>", unsafe_allow_html=True)
 
     # --- TAB 1: KARTA ---
     with tabs[0]:
-        c1, c2 = st.columns([1, 2.5])
+        c1, c2 = st.columns([1, 2])
         with c1:
-            with st.expander("➕ Lägg till"):
-                q = st.text_input("Sök...")
-                if st.button("Spara plats"):
-                    loc = geolocator.geocode(q)
-                    if loc:
-                        trip['places'].append({"name":q, "lat":loc.latitude, "lon":loc.longitude, "note":"", "cat":"Sevärdhet", "color":"#007aff", "icon":"camera"})
-                        st.rerun()
-            for i, p in enumerate(trip['places']):
-                st.info(f"📍 {p['name']}")
-        with c2:
-            center = [trip['places'][-1]['lat'], trip['places'][-1]['lon']] if trip['places'] else [48.2082, 16.3738]
-            m = folium.Map(location=center, zoom_start=13, tiles="CartoDB Positron")
+            loc_q = st.text_input("Sök plats...")
+            if st.button("Lägg till"):
+                l = geolocator.geocode(loc_q)
+                if l:
+                    trip['places'].append({"name":loc_q, "lat":l.latitude, "lon":l.longitude})
+                    st.rerun()
             for p in trip['places']:
-                folium.Marker([p['lat'], p['lon']], icon=folium.Icon(color="blue")).add_to(m)
-            st_folium(m, width="100%", height=400)
-
-    # --- TAB 2 & 4 ---
-    with tabs[1]:
-        st.write("Schema kommer här...")
-    with tabs[3]:
-        st.write("Bilder kommer här...")
+                st.caption(f"📍 {p['name']}")
+        with c2:
+            center = [trip['places'][-1]['lat'], trip['places'][-1]['lon']] if trip['places'] else [48.2, 16.3]
+            m = folium.Map(location=center, zoom_start=13)
+            for p in trip['places']:
+                folium.Marker([p['lat'], p['lon']], popup=p['name']).add_to(m)
+            st_folium(m, width="100%", height=350)
 
 else:
-    st.info("Skapa en resa i menyn!")
+    st.info("Börja med att skapa en resa i menyn till vänster!")
