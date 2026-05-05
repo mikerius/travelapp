@@ -9,51 +9,39 @@ st.set_page_config(page_title="Vibe Travel", layout="wide", page_icon="📍")
 
 st.markdown("""
     <style>
-    /* Tvinga horisontell layout på mobilen för matlistan */
-    [data-testid="column"] {
-        min-width: 0px !important;
-    }
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
     
-    .row-container {
+    html, body, [class*="css"] { font-family: 'Inter', sans-serif !important; }
+
+    /* Själva raden för maten */
+    .food-row {
         display: flex;
-        flex-direction: row;
         align-items: center;
-        width: 100%;
-        gap: 10px;
+        justify-content: space-between;
         padding: 5px 0;
-        border-bottom: 1px solid #f0f2f6;
+        border-bottom: 1px solid #eee;
+        gap: 10px;
     }
 
-    /* Gör papperskorgen minimal */
-    .stButton>button[key^="df"] {
-        border: none;
-        background: transparent;
-        color: #ccc;
-        padding: 0;
-        width: 25px;
+    /* Namn och beskrivning */
+    .food-info {
+        flex: 2;
+        line-height: 1.2;
     }
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-    html, body, [class*="css"] { font-family: 'Inter', sans-serif !important; }
-    
-    /* Mobil-anpassad Bucket List */
-    .food-item {
+
+    /* Initial-rutorna */
+    .check-area {
         display: flex;
-        justify-content: space-between;
+        gap: 15px; /* Avstånd mellan M och T */
         align-items: center;
-        padding: 12px 0;
-        border-bottom: 1px solid #f0f2f6;
     }
-    .food-text { flex: 2; }
-    .food-name { font-weight: 600; font-size: 0.9rem; margin-bottom: -2px; }
-    .food-desc { font-style: italic; color: #888; font-size: 0.8rem; }
-    
-    /* Knappar & Kort */
-    .stButton>button { border-radius: 8px; font-weight: 600; height: 35px; }
-    [data-testid="stExpander"] { border: none !important; box-shadow: 0 1px 3px rgba(0,0,0,0.1) !important; border-radius: 10px !important; }
-    
-    /* Dölj Streamlit-menyn för en renare app-känsla */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
+
+    /* Gör Streamlits checkboxar mindre och tajtare */
+    [data-testid="stCheckbox"] {
+        margin-bottom: -15px !important;
+        width: 30px !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -140,45 +128,37 @@ if sel_trip:
 
     with tabs[2]:
         st.write("#### 🍴 Mat-bucketlist")
-        # Input-fält i en expander för att spara vertikal yta
-        with st.expander("➕ Lägg till ny rätt", expanded=False):
-            f_n = st.text_input("Rätt", placeholder="T.ex Schnitzel")
-            f_d = st.text_input("Beskrivning", placeholder="Jättegott kött")
-            if st.button("Spara i listan", use_container_width=True):
+        
+        with st.expander("➕ Lägg till ny rätt"):
+            f_n = st.text_input("Rätt")
+            f_d = st.text_input("Beskrivning")
+            if st.button("Spara", use_container_width=True):
                 if f_n:
                     trip['food'].append({"item": f_n, "desc": f_d, "checks": {name: False for name in trip['travelers']}})
                     st.rerun()
-        
-        st.write("") # Mellanrum
+
+        st.write("") # Lite luft efter expandern
 
         for i, f in enumerate(trip['food']):
-            # Vi skapar en rad med 3 huvuddelar: Info, Checkboxar, Radera
-            # Genom att använda st.columns med små tal tvingar vi dem att ligga på rad
-            col_info, col_chk, col_del = st.columns([0.5, 0.4, 0.1])
+            # Vi skapar en rad med tre fasta kolumner som INTE bryts på mobil
+            col_txt, col_chk, col_btn = st.columns([0.5, 0.4, 0.1])
             
-            with col_info:
-                # Maträtt + Kursiv info direkt under
-                st.markdown(f"**{f['item']}** \n<small style='color:gray; font-style:italic;'>{f['desc']}</small>", unsafe_allow_html=True)
+            with col_txt:
+                # Maträtt + kursiv beskrivning på samma rad/tajt under
+                st.markdown(f"**{f['item']}** <span style='color:gray; font-size:0.8rem; font-style:italic;'>{f['desc']}</span>", unsafe_allow_html=True)
             
             with col_chk:
-                # Vi skapar under-kolumner för varje person
-                n_travelers = len(trip['travelers'])
-                sub_cols = st.columns(n_travelers)
+                # Vi lägger initialerna horisontellt
+                c_idx = st.columns(len(trip['travelers']))
                 for idx, name in enumerate(trip['travelers']):
                     initial = name[0].upper()
-                    # Vi använder label_visibility="collapsed" för att dölja namnet men behålla funktionen
-                    trip['food'][i]['checks'][name] = sub_cols[idx].checkbox(
-                        initial, 
-                        value=f['checks'][name], 
-                        key=f"f{i}{name}"
-                    )
+                    trip['food'][i]['checks'][name] = c_cols[idx].checkbox(initial, value=f['checks'][name], key=f"f{i}{name}")
             
-            with col_del:
+            with col_btn:
+                # En liten papperskorg längst ut
                 if st.button("🗑️", key=f"df{i}"):
                     trip['food'].pop(i)
                     st.rerun()
-            
-            st.markdown("<hr style='margin: 2px 0; opacity:0.1'>", unsafe_allow_html=True)
 
     with tabs[3]:
         st.write("#### 📸 Bilder")
