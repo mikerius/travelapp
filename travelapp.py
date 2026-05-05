@@ -1,51 +1,41 @@
 import streamlit as st
-import folium
-from streamlit_folium import st_folium
-from geopy.geocoders import Nominatim
 
-# --- 1. THE "FORCE-STAY-HORIZONTAL" CSS ---
-st.set_page_config(page_title="Travel Notepad", layout="wide")
+# --- 1. THE TRULY STATIC HTML (NO STREAMLIT WIDGETS IN ROWS) ---
+st.set_page_config(page_title="Vibe Travel", layout="wide")
 
 st.markdown("""
     <style>
-    /* Tvinga ljust läge för Notepad-känsla */
     :root { background-color: white; }
+    .block-container { padding-top: 1rem !important; }
     
-    /* EN RIKTIG HTML-TABELL - Denna kan inte staplas vertikalt! */
-    .notepad-row {
-        display: flex;
-        flex-direction: row;
-        align-items: center;
+    /* EN RIKTIG TABELL - STUM OCH HORISONTELL */
+    .notepad-table {
         width: 100%;
-        padding: 12px 0;
+        border-collapse: collapse;
+        table-layout: fixed;
+    }
+    .notepad-table td {
+        padding: 12px 4px;
         border-bottom: 0.5px solid #e5e5e5;
+        vertical-align: middle;
     }
-    .col-info { width: 50%; flex-shrink: 1; }
-    .col-btn  { width: 16%; text-align: center; }
+    .col-info { width: 60%; }
+    .col-chk  { width: 15%; text-align: center; }
     
-    /* Design för våra egna "checkbox-knappar" */
-    .check-btn {
-        display: inline-block;
-        width: 32px;
-        height: 32px;
-        line-height: 32px;
+    /* Cirklar för status */
+    .circle {
+        height: 18px;
+        width: 18px;
         border-radius: 50%;
-        border: 1px solid #d2d2d7;
-        text-decoration: none;
-        color: #1d1d1f;
-        font-weight: 600;
-        font-size: 0.8rem;
-        background-color: white;
+        display: inline-block;
+        border: 1px solid #ccc;
     }
-    .checked {
-        background-color: #34c759 !important;
-        color: white !important;
-        border-color: #34c759 !important;
+    .checked { 
+        background-color: #34c759; 
+        border-color: #34c759; 
+        box-shadow: inset 0 0 0 2px white;
     }
-    
-    /* Göm Streamlits egna knappar för att inte skapa kaos */
-    .stButton>button { border: none !important; background: transparent !important; padding: 0 !important; }
-    
+
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     </style>
@@ -55,24 +45,23 @@ st.markdown("""
 if 'trips' not in st.session_state:
     st.session_state.trips = {}
 
-# --- FUNKTIONER FÖR ATT ÄNDRA STATUS ---
-def toggle_check(trip_name, item_idx, person):
-    current = st.session_state.trips[trip_name]['food'][item_idx]['checks'][person]
-    st.session_state.trips[trip_name]['food'][item_idx]['checks'][person] = not current
-
 # --- SIDEBAR ---
 with st.sidebar:
     st.title("Mina Resor")
     trip_names = list(st.session_state.trips.keys())
-    sel_trip = st.selectbox("Välj", options=trip_names) if trip_names else None
-    if st.button("+ Ny resa", use_container_width=True):
+    sel_trip = st.selectbox("Välj resa", options=trip_names) if trip_names else None
+    if st.button("+ Ny resa"):
         st.session_state.add_mode = True
+    
     if st.session_state.get('add_mode'):
         with st.form("new_trip"):
-            n = st.text_input("Vart?")
-            t = st.text_input("Vem? (t.ex. M, T)")
+            n = st.text_input("Destination")
+            t = st.text_input("Resenärer (ex: M, T)")
             if st.form_submit_button("Skapa"):
-                st.session_state.trips[n] = {"places":[], "food":[], "travelers":[x.strip()[:1].upper() for x in t.split(",")] if t else ["M", "T"]}
+                st.session_state.trips[n] = {
+                    "food": [], 
+                    "travelers": [x.strip()[:1].upper() for x in t.split(",")] if t else ["M", "T"]
+                }
                 st.session_state.add_mode = False
                 st.rerun()
 
@@ -80,49 +69,58 @@ with st.sidebar:
 if sel_trip:
     trip = st.session_state.trips[sel_trip]
     st.subheader(sel_trip)
-    tabs = st.tabs(["📍 Platser", "🍝 Mat"])
+    
+    # --- INPUT DEL ---
+    with st.expander("➕ Lägg till mat"):
+        f_n = st.text_input("Vad?")
+        f_d = st.text_input("Notis")
+        if st.button("Spara"):
+            if f_n:
+                trip['food'].append({"item": f_n, "desc": f_d, "checks": {name: False for name in trip['travelers']}})
+                st.rerun()
 
-    with tabs[1]:
-        with st.expander("➕ Lägg till mat"):
-            f_n = st.text_input("Vad?")
-            f_d = st.text_input("Beskrivning")
-            if st.button("Spara rätt", use_container_width=True):
-                if f_n:
-                    trip['food'].append({"item": f_n, "desc": f_d, "checks": {name: False for name in trip['travelers']}})
-                    st.rerun()
-
-        st.write("")
-
-        # --- HÄR BYGGER VI DEN STUMMA LISTAN ---
+    # --- LISTAN (REN HTML) ---
+    if trip['food']:
+        html_table = "<table class='notepad-table'>"
         for i, f in enumerate(trip['food']):
-            # Vi skapar en rad med st.columns men vi lägger nästan ingen "vikt" i dem
-            # för att inte trigga Streamlits responsivitet
-            c_txt, c_m, c_t, c_del = st.columns([0.5, 0.16, 0.16, 0.18])
+            # Bygg cirklarna
+            circles = ""
+            for name in trip['travelers'][:2]:
+                is_checked = f['checks'].get(name, False)
+                status_class = "circle checked" if is_checked else "circle"
+                circles += f"<td class='col-chk'><div class='{status_class}'></div><br><small>{name}</small></td>"
             
-            with c_txt:
-                st.markdown(f"**{f['item']}**<br><small style='color:gray'>{f['desc']}</small>", unsafe_allow_html=True)
-            
-            # Istället för st.checkbox använder vi st.button som ser ut som en cirkel
-            # Detta är mer robust för horisontell layout
-            for idx, name in enumerate(trip['travelers'][:2]):
-                target_col = c_m if idx == 0 else c_t
-                with target_col:
-                    is_checked = f['checks'].get(name, False)
-                    btn_label = f"● {name}" if is_checked else f"○ {name}"
-                    if st.button(btn_label, key=f"btn_{i}_{name}"):
-                        f['checks'][name] = not is_checked
-                        st.rerun()
-            
-            with c_del:
-                if st.button("🗑️", key=f"del_{i}"):
-                    trip['food'].pop(i)
-                    st.rerun()
-            
-            st.markdown("<hr style='margin:0; opacity:0.1'>", unsafe_allow_html=True)
+            html_table += f"""
+                <tr>
+                    <td class='col-info'>
+                        <b>{i+1}. {f['item']}</b><br>
+                        <span style='color:gray; font-size:0.8rem;'>{f['desc']}</span>
+                    </td>
+                    {circles}
+                </tr>
+            """
+        html_table += "</table>"
+        st.markdown(html_table, unsafe_allow_html=True)
 
-    with tabs[0]:
-        st.write("Kartan är här...")
-        # (Behåll din gamla kart-kod här om du vill)
+        # --- KONTROLLPANEL (Längst ner, för att faktiskt ändra data) ---
+        st.markdown("<br><br>", unsafe_allow_html=True)
+        with st.container():
+            st.write("---")
+            st.caption("Ändra status:")
+            c1, c2, c3 = st.columns([1, 1, 1])
+            row_num = c1.number_input("Rad", min_value=1, max_value=len(trip['food']), step=1)
+            who = c2.selectbox("Vem?", options=trip['travelers'])
+            
+            # Action-knappar
+            btn_col1, btn_col2 = st.columns(2)
+            if btn_col1.button("Check / Uncheck", use_container_width=True):
+                trip['food'][row_num-1]['checks'][who] = not trip['food'][row_num-1]['checks'][who]
+                st.rerun()
+            if btn_col2.button("Ta bort rad", use_container_width=True):
+                trip['food'].pop(row_num-1)
+                st.rerun()
+    else:
+        st.info("Listan är tom. Lägg till något ovan!")
 
 else:
-    st.info("Välkommen! Skapa en resa för att börja.")
+    st.info("Välkommen! Skapa en resa i sidomenyn.")
