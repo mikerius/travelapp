@@ -3,39 +3,65 @@ import folium
 from streamlit_folium import st_folium
 from geopy.geocoders import Nominatim
 
+# --- 1. MINIMALIST NOTEPAD UI ---
 st.set_page_config(page_title="Vibe Travel", layout="wide")
 
-# --- 1. CSS (ENDAST FÖR ATT TA BORT ONÖDIGT MELLANRUM) ---
 st.markdown("""
     <style>
-    .block-container { padding-top: 1rem !important; }
-    .stCheckbox { margin-bottom: -15px !important; }
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
+    html, body, [class*="css"] { font-family: 'Inter', sans-serif !important; background-color: white; }
+    
+    /* Rad-design för Notepad-känsla */
+    .item-row {
+        padding: 10px 0;
+        border-bottom: 0.5px solid #eee;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    /* Göm Streamlits standard-knappar och gör dem till små diskreta texter/ikoner */
+    .stButton > button {
+        border: none !important;
+        background: transparent !important;
+        color: #007aff !important;
+        padding: 0px 5px !important;
+        font-weight: 600 !important;
+        font-size: 14px !important;
+    }
+    
+    .delete-btn > div > button { color: #ff3b30 !important; font-size: 12px !important; }
+
+    /* Fixa marginaler */
+    .block-container { padding-top: 1rem !important; max-width: 500px !important; }
+    [data-testid="stVerticalBlock"] { gap: 0rem !important; }
+    
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. DATA ---
+# --- 2. DATA LOGIC ---
 if 'trips' not in st.session_state:
     st.session_state.trips = {}
 
-geolocator = Nominatim(user_agent="vibe_v25")
-
 # --- SIDEBAR ---
 with st.sidebar:
-    st.title("Mina Resor")
+    st.title("🗺️ Resor")
     trip_names = list(st.session_state.trips.keys())
-    sel_trip = st.selectbox("Välj resa", options=trip_names) if trip_names else None
-    if st.button("+ Ny resa"):
+    sel_trip = st.selectbox("Välj", options=trip_names) if trip_names else None
+    if st.button("+ Skapa ny resa"):
         st.session_state.add_mode = True
     
     if st.session_state.get('add_mode'):
         with st.form("new_trip"):
             n = st.text_input("Destination")
-            t = st.text_input("Vilka reser? (ex: M, T)")
+            t = st.text_input("Vem? (ex: Micke, Tessan)")
             if st.form_submit_button("Spara"):
+                # Vi sparar hela namnet men visar bara första bokstaven i listan
                 st.session_state.trips[n] = {
-                    "food": [], "places": [], "travelers": [x.strip()[:1].upper() for x in t.split(",")] if t else ["M", "T"]
+                    "food": [], "places": [], 
+                    "travelers": [x.strip() for x in t.split(",")] if t else ["Micke", "Tessan"]
                 }
                 st.session_state.add_mode = False
                 st.rerun()
@@ -45,69 +71,59 @@ if sel_trip:
     trip = st.session_state.trips[sel_trip]
     st.subheader(sel_trip)
     
-    tabs = st.tabs(["📍 Platser", "🍝 Mat", "📸 Galleri"])
+    tabs = st.tabs(["🍝 Mat", "📍 Platser", "📸 Galleri"])
 
-    # --- FLIK: MAT (DEN VI SKA FIXA NU) ---
-    with tabs[1]:
-        with st.expander("➕ Lägg till i listan"):
-            f_n = st.text_input("Maträtt")
+    # --- FLIK: MAT ---
+    with tabs[0]:
+        with st.expander("➕ Lägg till ny rätt"):
+            f_n = st.text_input("Vad?")
             f_d = st.text_input("Notis")
-            if st.button("Spara"):
+            if st.button("Spara i listan", use_container_width=True):
                 if f_n:
                     trip['food'].append({"item": f_n, "desc": f_d, "checks": {name: False for name in trip['travelers']}})
                     st.rerun()
 
-        st.write("---")
+        st.write("") # Spacer
 
         for i, f in enumerate(trip['food']):
-            # VI ANVÄNDER BARA EN ENDA RAD TEXT
-            # Vi skapar status-ikoner: ✅ för klar, ⚪ för inte klar
-            status_str = ""
-            for name in trip['travelers']:
-                icon = "✅" if f['checks'].get(name) else "⚪"
-                status_str += f"{icon} {name}  "
-
-            # Vi skriver ut allt som en enda textsträng. Detta KAN inte bli vertikalt.
-            st.markdown(f"**{i+1}. {f['item']}** | {status_str}")
-            if f['desc']:
-                st.caption(f"_{f['desc']}_")
+            # Vi skapar en rad med horisontell layout som INTE bryts
+            # Col 1: Namn, Col 2: Person 1, Col 3: Person 2, Col 4: Radera
+            c1, c2, c3, c4 = st.columns([0.5, 0.15, 0.15, 0.15])
             
-            # Kontroller för varje rad
-            c1, c2, c3 = st.columns([1, 1, 1])
-            if c1.button(f"Ändra {trip['travelers'][0]}", key=f"t1_{i}"):
-                p = trip['travelers'][0]
-                trip['food'][i]['checks'][p] = not trip['food'][i]['checks'].get(p)
-                st.rerun()
+            with c1:
+                st.markdown(f"**{f['item']}**")
+                if f['desc']: st.caption(f['desc'])
             
-            if len(trip['travelers']) > 1:
-                if c2.button(f"Ändra {trip['travelers'][1]}", key=f"t2_{i}"):
-                    p = trip['travelers'][1]
-                    trip['food'][i]['checks'][p] = not trip['food'][i]['checks'].get(p)
+            # Person-knappar (Toggle)
+            for idx, name in enumerate(trip['travelers'][:2]):
+                with (c2 if idx == 0 else c3):
+                    is_checked = f['checks'].get(name, False)
+                    # Vi använder symboler: ● för ifylld, ○ för tom
+                    icon = "●" if is_checked else "○"
+                    if st.button(f"{icon}{name[0]}", key=f"t_{i}_{name}"):
+                        f['checks'][name] = not is_checked
+                        st.rerun()
+            
+            with c4:
+                st.markdown('<div class="delete-btn">', unsafe_allow_html=True)
+                if st.button("✕", key=f"d_{i}"):
+                    trip['food'].pop(i)
                     st.rerun()
+                st.markdown('</div>', unsafe_allow_html=True)
             
-            if c3.button("🗑️", key=f"del_{i}"):
-                trip['food'].pop(i)
-                st.rerun()
-            
-            st.write("---")
+            st.markdown("---")
 
     # --- FLIK: PLATSER ---
-    with tabs[0]:
+    with tabs[1]:
         q = st.text_input("Sök plats")
-        if st.button("Sök och lägg till"):
-            loc = geolocator.geocode(q)
+        if st.button("Lägg till"):
+            loc = Nominatim(user_agent="vibe_v26").geocode(q)
             if loc:
                 trip['places'].append({"name": q, "lat": loc.latitude, "lon": loc.longitude})
                 st.rerun()
         if trip['places']:
             m = folium.Map(location=[trip['places'][-1]['lat'], trip['places'][-1]['lon']], zoom_start=12)
-            for p in trip['places']:
-                folium.Marker([p['lat'], p['lon']], popup=p['name']).add_to(m)
             st_folium(m, width="100%", height=300)
-
-    # --- FLIK: GALLERI ---
-    with tabs[2]:
-        st.write("Galleri")
 
 else:
     st.info("Välkommen! Skapa en resa i menyn.")
