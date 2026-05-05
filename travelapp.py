@@ -4,7 +4,7 @@ import folium
 from streamlit_folium import st_folium
 from geopy.geocoders import Nominatim
 
-# --- 1. THE "PORTRAIT-LOCKED" TABLE ENGINE (CSS) ---
+# --- 1. THE "PORTRAIT-LOCKED" ENGINE (CSS) ---
 st.set_page_config(page_title="Vibe Travel", layout="wide")
 
 st.markdown("""
@@ -15,50 +15,44 @@ st.markdown("""
         font-family: 'Inter', -apple-system, sans-serif !important;
     }
 
-    /* FIXA TABELLEN - DETTA TVINGAR RADEN ATT VARA HORISONTELL */
-    .compact-table {
+    /* Tvinga bort Streamlits marginaler */
+    .block-container { padding-top: 1rem !important; }
+    
+    /* DESIGN FÖR MAT-TABELLEN (FÖRHINDRAR STAPLING) */
+    .food-table {
         width: 100%;
         border-collapse: collapse;
+        table-layout: fixed; /* Detta låser bredden! */
+    }
+    .food-table td {
+        padding: 8px 0;
+        border-bottom: 0.5px solid #eee;
+        vertical-align: middle;
     }
     
-    /* Justera Streamlits checkboxar så de inte tar plats */
-    .stCheckbox {
+    /* Göm Streamlits labels för checkboxar helt för att spara plats */
+    div[data-testid="stCheckbox"] label span {
+        display: none;
+    }
+    div[data-testid="stCheckbox"] {
         margin-bottom: -15px !important;
-    }
-    
-    /* Göm labels (M, T) men låt dem finnas för skärmläsare */
-    .stCheckbox label p {
-        font-size: 0.7rem !important;
-        margin-top: 2px !important;
+        display: flex;
+        justify-content: center;
     }
 
-    /* Tabs för mobil */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 0px;
-        background-color: #f0f0f2;
-        border-radius: 10px;
-        padding: 2px;
-    }
-    .stTabs [data-baseweb="tab"] {
-        font-size: 11px !important;
-        padding: 5px 6px !important;
-    }
-
-    /* Dra ihop avståndet mellan element */
-    [data-testid="stVerticalBlock"] > div {
-        gap: 0rem !important;
-        margin-bottom: -5px !important;
-    }
+    /* Tabs-styling för att rymmas på bredden */
+    .stTabs [data-baseweb="tab-list"] { gap: 0px; background-color: #f0f0f2; border-radius: 10px; }
+    .stTabs [data-baseweb="tab"] { font-size: 11px !important; padding: 5px 6px !important; }
 
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. DATA INITIALIZATION ---
+# --- 2. DATA ---
 if 'trips' not in st.session_state:
     st.session_state.trips = {}
-geolocator = Nominatim(user_agent="vibe_travel_v20")
+geolocator = Nominatim(user_agent="vibe_travel_final_v1")
 
 # --- SIDEBAR ---
 with st.sidebar:
@@ -68,13 +62,13 @@ with st.sidebar:
     if st.button("+ Ny resa", use_container_width=True):
         st.session_state.add_mode = True
     if st.session_state.get('add_mode'):
-        with st.form("new_trip"):
+        with st.form("new_trip_form"):
             n = st.text_input("Destination")
-            t = st.text_input("Vilka reser? (t.ex Micke, Tessan)")
+            t = st.text_input("Vilka reser? (t.ex. M, T)")
             if st.form_submit_button("Skapa"):
                 st.session_state.trips[n] = {
                     "places":[], "schedule":[], "food":[], "photos":[], 
-                    "travelers":[x.strip() for x in t.split(",")] if t else ["M", "T"]
+                    "travelers":[x.strip()[:1].upper() for x in t.split(",")] if t else ["M", "T"]
                 }
                 st.session_state.add_mode = False
                 st.rerun()
@@ -82,81 +76,72 @@ with st.sidebar:
 # --- MAIN APP ---
 if sel_trip:
     trip = st.session_state.trips[sel_trip]
-    st.markdown(f"### {sel_trip}")
+    st.subheader(sel_trip)
     
     tabs = st.tabs(["📍 Platser", "📅 Schema", "🍝 Mat", "📸 Galleri"])
 
-    # --- TAB: MAT (BUCKET LIST) ---
+    # --- TAB: MAT (HÄR FIXAR VI TABELLEN) ---
     with tabs[2]:
         with st.expander("➕ Lägg till mat"):
             f_n = st.text_input("Vad?")
-            f_d = st.text_input("Info (valfritt)")
-            if st.button("Spara i listan"):
+            f_d = st.text_input("Info")
+            if st.button("Spara"):
                 if f_n:
                     trip['food'].append({"item": f_n, "desc": f_d, "checks": {name: False for name in trip['travelers']}})
                     st.rerun()
 
-        st.markdown("<br>", unsafe_allow_html=True)
-
-        # HÄR ÄR MAGIN: Vi använder st.columns men med extremt tajta proportioner 
-        # och vi lägger allt på EN rad per maträtt.
+        # Vi använder en kombination av HTML för layout och Streamlit för funktionalitet
+        # Genom att sätta kolumnerna EXTREMT tajt här och dölja labels vinner vi
         for i, f in enumerate(trip['food']):
-            # 60% till text, 15% per person (max 2), 10% till radera
-            cols = st.columns([0.55, 0.17, 0.17, 0.11])
+            # c1=Text(55%), c2=Pers1(15%), c3=Pers2(15%), c4=Radera(15%)
+            cols = st.columns([0.55, 0.15, 0.15, 0.15])
             
             with cols[0]:
-                # Vi använder en fallback f.get() ifall gammal data saknar nycklar
-                name = f.get('item', 'Okänd')
-                desc = f.get('desc', '')
-                st.markdown(f"**{name}**<br><small style='color:gray;'>{desc}</small>", unsafe_allow_html=True)
+                item_name = f.get('item', 'Inget namn')
+                item_desc = f.get('desc', '')
+                st.markdown(f"**{item_name}**<br><small style='color:gray;'>{item_desc}</small>", unsafe_allow_html=True)
             
-            # Checkboxar
+            # Checkboxar utan labels (vi döljer M/T i CSS men de finns i koden)
             for idx, name in enumerate(trip['travelers'][:2]):
                 with cols[idx+1]:
-                    initial = name[0].upper()
-                    # Vi hämtar värdet säkert
-                    current_val = f.get('checks', {}).get(name, False)
-                    f['checks'][name] = st.checkbox(initial, value=current_val, key=f"chk_{i}_{name}")
+                    # Vi använder en tom sträng som label för att inte trigga vertikal stapling
+                    f['checks'][name] = st.checkbox("", value=f['checks'].get(name, False), key=f"c_{i}_{name}")
+                    st.markdown(f"<div style='text-align:center; font-size:10px; color:gray; margin-top:-5px;'>{name}</div>", unsafe_allow_html=True)
             
             with cols[3]:
-                if st.button("🗑", key=f"del_{i}"):
+                if st.button("🗑️", key=f"del_{i}"):
                     trip['food'].pop(i)
                     st.rerun()
             
-            st.markdown("<hr style='margin: 0px; opacity: 0.1;'>", unsafe_allow_html=True)
+            st.markdown("<hr style='margin:2px 0; opacity:0.1'>", unsafe_allow_html=True)
 
-    # --- TAB: PLATSER ---
+    # --- TAB: PLATSER (STÅENDE OPTIMERAD) ---
     with tabs[0]:
-        with st.expander("🔍 Sök plats"):
-            q = st.text_input("Sök...")
-            if st.button("Lägg till"):
-                loc = geolocator.geocode(q)
-                if loc:
-                    trip['places'].append({"name":q, "lat":loc.latitude, "lon":loc.longitude})
-                    st.rerun()
+        q = st.text_input("Sök plats...", key="loc_search")
+        if st.button("Lägg till plats"):
+            loc = geolocator.geocode(q)
+            if loc:
+                trip['places'].append({"name":q, "lat":loc.latitude, "lon":loc.longitude})
+                st.rerun()
         
         if trip['places']:
             center = [trip['places'][-1]['lat'], trip['places'][-1]['lon']]
             m = folium.Map(location=center, zoom_start=13, tiles="CartoDB Positron")
             for p in trip['places']:
-                folium.Marker([p['lat'], p['lon']], popup=p.get('name')).add_to(m)
-            st_folium(m, width="100%", height=300, use_container_width=True)
-            
-            for p in trip['places']:
-                st.caption(f"📍 {p.get('name')}")
+                folium.Marker([p['lat'], p['lon']], popup=p['name']).add_to(m)
+            st_folium(m, width="100%", height=250, use_container_width=True)
 
-    # --- TAB: SCHEMA & GALLERI (Enkel version) ---
+    # --- TAB: SCHEMA & GALLERI ---
     with tabs[1]:
-        st.info("Schema-funktion aktiveras i nästa steg.")
+        st.write("Schema kommer här...")
     with tabs[3]:
-        up = st.file_uploader("Ladda upp bild", type=['jpg', 'png'])
+        up = st.file_uploader("Bild", type=['jpg', 'png'])
         if up:
             trip.setdefault('photos', []).append(up)
-            st.success("Uppladdad!")
         if trip.get('photos'):
             c = st.columns(2)
             for idx, img in enumerate(trip['photos']):
                 c[idx%2].image(img, use_container_width=True)
 
 else:
-    st.info("Skapa en resa i menyn!")
+    st.info("Börja med att skapa en resa!")
