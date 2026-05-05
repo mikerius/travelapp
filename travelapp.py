@@ -9,6 +9,29 @@ st.set_page_config(page_title="Vibe Travel", layout="wide", page_icon="📍")
 
 st.markdown("""
     <style>
+    /* Tvinga horisontell layout på mobilen för matlistan */
+    [data-testid="column"] {
+        min-width: 0px !important;
+    }
+    
+    .row-container {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        width: 100%;
+        gap: 10px;
+        padding: 5px 0;
+        border-bottom: 1px solid #f0f2f6;
+    }
+
+    /* Gör papperskorgen minimal */
+    .stButton>button[key^="df"] {
+        border: none;
+        background: transparent;
+        color: #ccc;
+        padding: 0;
+        width: 25px;
+    }
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
     html, body, [class*="css"] { font-family: 'Inter', sans-serif !important; }
     
@@ -117,28 +140,45 @@ if sel_trip:
 
     with tabs[2]:
         st.write("#### 🍴 Mat-bucketlist")
-        c_add1, c_add2 = st.columns([1, 1])
-        f_n = c_add1.text_input("Rätt", placeholder="T.ex Schnitzel")
-        f_d = c_add2.text_input("Beskrivning", placeholder="Jättegott kött")
-        if st.button("Lägg till mat"):
-            trip['food'].append({"item": f_n, "desc": f_d, "checks": {name: False for name in trip['travelers']}})
-            st.rerun()
+        # Input-fält i en expander för att spara vertikal yta
+        with st.expander("➕ Lägg till ny rätt", expanded=False):
+            f_n = st.text_input("Rätt", placeholder="T.ex Schnitzel")
+            f_d = st.text_input("Beskrivning", placeholder="Jättegott kött")
+            if st.button("Spara i listan", use_container_width=True):
+                if f_n:
+                    trip['food'].append({"item": f_n, "desc": f_d, "checks": {name: False for name in trip['travelers']}})
+                    st.rerun()
         
-        st.divider()
+        st.write("") # Mellanrum
+
         for i, f in enumerate(trip['food']):
-            # Mobil-UI: Namn till vänster, Checkboxar i mitten, Radera till höger
-            col_info, col_chk, col_del = st.columns([3, 2, 0.5])
+            # Vi skapar en rad med 3 huvuddelar: Info, Checkboxar, Radera
+            # Genom att använda st.columns med små tal tvingar vi dem att ligga på rad
+            col_info, col_chk, col_del = st.columns([0.5, 0.4, 0.1])
+            
             with col_info:
-                st.markdown(f"<div class='food-name'>{f['item']}</div>", unsafe_allow_html=True)
-                st.markdown(f"<div class='food-desc'>{f['desc']}</div>", unsafe_allow_html=True)
+                # Maträtt + Kursiv info direkt under
+                st.markdown(f"**{f['item']}** \n<small style='color:gray; font-style:italic;'>{f['desc']}</small>", unsafe_allow_html=True)
+            
             with col_chk:
-                # Initialer istället för hela namnet för att spara plats
-                chk_cols = st.columns(len(trip['travelers']))
+                # Vi skapar under-kolumner för varje person
+                n_travelers = len(trip['travelers'])
+                sub_cols = st.columns(n_travelers)
                 for idx, name in enumerate(trip['travelers']):
                     initial = name[0].upper()
-                    trip['food'][i]['checks'][name] = chk_cols[idx].checkbox(initial, value=f['checks'][name], key=f"f{i}{name}")
+                    # Vi använder label_visibility="collapsed" för att dölja namnet men behålla funktionen
+                    trip['food'][i]['checks'][name] = sub_cols[idx].checkbox(
+                        initial, 
+                        value=f['checks'][name], 
+                        key=f"f{i}{name}"
+                    )
+            
             with col_del:
-                if st.button("🗑", key=f"df{i}"): trip['food'].pop(i); st.rerun()
+                if st.button("🗑️", key=f"df{i}"):
+                    trip['food'].pop(i)
+                    st.rerun()
+            
+            st.markdown("<hr style='margin: 2px 0; opacity:0.1'>", unsafe_allow_html=True)
 
     with tabs[3]:
         st.write("#### 📸 Bilder")
